@@ -163,8 +163,8 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="PublicRigidBodiesTests.cpp" />
     <ClCompile Include="PublicMassSpringSystemTests.cpp" />
-	<ClCompile Include="PublicRigidBodiesTests.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\AntTweakBar\src\AntTweakBar_2022.vcxproj">

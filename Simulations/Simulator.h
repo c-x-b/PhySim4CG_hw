@@ -70,8 +70,6 @@ public:
 	*/
 	virtual void onMouse(int x, int y) = 0;
 
-
-	virtual void setUpScene() {}
 };
 
 #endif
