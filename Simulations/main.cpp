@@ -22,8 +22,8 @@ using namespace GamePhysics;
 
 //#define TEMPLATE_DEMO
 //#define MASS_SPRING_SYSTEM
-#define RIGID_BODY_SYSTEM
-//#define SPH_SYSTEM
+//#define RIGID_BODY_SYSTEM
+#define FLIP_SYSTEM
 
 #ifdef TEMPLATE_DEMO
 #include "TemplateSimulator.h"
@@ -34,13 +34,13 @@ using namespace GamePhysics;
 #ifdef RIGID_BODY_SYSTEM
 #include "RigidBodySystemSimulator.h"
 #endif
-#ifdef SPH_SYSTEM
-//#include "SPHSystemSimulator.h"
+#ifdef FLIP_SYSTEM
+#include "flip.h"
 #endif
 
 DrawingUtilitiesClass * g_pDUC;
 Simulator * g_pSimulator;
-float 	g_fTimestep = 0.0050;
+float 	g_fTimestep = 0.00300;
 #ifdef ADAPTIVESTEP
 float   g_fTimeFactor = 1;
 #endif
@@ -367,8 +367,8 @@ int main(int argc, char* argv[])
 #ifdef RIGID_BODY_SYSTEM
 	g_pSimulator= new RigidBodySystemSimulator();
 #endif
-#ifdef SPH_SYSTEM
-	//g_pSimulator= new SPHSystemSimulator();
+#ifdef FLIP_SYSTEM
+	g_pSimulator= new FlipSimulator();
 #endif
 	g_pSimulator->reset();
 
