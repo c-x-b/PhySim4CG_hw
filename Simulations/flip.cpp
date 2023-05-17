@@ -5,7 +5,8 @@ FlipSimulator::FlipSimulator() {
 	m_fOverRelaxation = 1.9f;
 	m_bSeparateParticles = true;
 	m_bCompensateDrift = true;
-	m_externalForce = Vec3(0.0f, -9.8f, 0.0f);
+	m_gravity = Vec3(0.0f, -9.8f, 0.0f);
+	m_externalForce = Vec3(0.0f);
 }
 
 // UI functions
@@ -51,7 +52,18 @@ void FlipSimulator::notifyCaseChanged(int testCase) {
 }
 
 void FlipSimulator::externalForcesCalculations(float timeElapsed) {
-	
+	Point2D mouseDiff;
+	mouseDiff.x = m_trackmouse.x - m_oldtrackmouse.x;
+	mouseDiff.y = m_trackmouse.y - m_oldtrackmouse.y;
+	if ((mouseDiff.x != 0 || mouseDiff.y != 0) && m_iTestCase == 0) {
+		Mat4 worldViewInv = Mat4(DUC->g_camera.GetWorldMatrix() * DUC->g_camera.GetViewMatrix());
+		worldViewInv = worldViewInv.inverse();
+		Vec3 inputView = Vec3((float)mouseDiff.x, (float)-mouseDiff.y, 0);
+		Vec3 inputWorld = worldViewInv.transformVectorNormal(inputView);
+		float inputScale = 0.01f;
+		inputWorld = inputWorld * inputScale;
+		m_externalForce = 1.5f * inputWorld;
+	}
 }
 
 void FlipSimulator::onClick(int x, int y) {
@@ -69,10 +81,10 @@ void FlipSimulator::onMouse(int x, int y) {
 // Simulation Functions
 void FlipSimulator::integrateParticles(float timeStep) {
 	for(int i = 0; i < m_iNumSpheres; i++) {
-		m_particleVel[i] += timeStep * m_externalForce;
+		m_particleVel[i] += timeStep * (m_gravity + m_externalForce);
 		m_particlePos[i] += timeStep * m_particleVel[i];
-		
 	}
+	m_externalForce = Vec3(0.0f);
 }
 
 void FlipSimulator::pushParticlesApart(int numIters) {
@@ -89,11 +101,11 @@ void FlipSimulator::pushParticlesApart(int numIters) {
 	hashTable.resize(hashCellX * hashCellY * hashCellZ);
 
 	for (int i = 0; i < m_iNumSpheres; i++) {
-		int x = floor((m_particlePos[i].x + 0.5f) * hinfCell);
+		int x = floor((m_particlePos[i].x + m_baseOff) * hinfCell);
 		x = max(0, min(x, hashCellX - 1));
-		int y = floor((m_particlePos[i].y + 0.5f) * hinfCell);
+		int y = floor((m_particlePos[i].y + m_baseOff) * hinfCell);
 		y = max(0, min(y, hashCellY - 1));
-		int z = floor((m_particlePos[i].z + 0.5f) * hinfCell);
+		int z = floor((m_particlePos[i].z + m_baseOff) * hinfCell);
 		z = max(0, min(z, hashCellZ - 1));
 		int index = x * offX + y * offY + z;
 
@@ -102,18 +114,18 @@ void FlipSimulator::pushParticlesApart(int numIters) {
 
 	for (int iter = 0; iter < numIters; iter++) {
 		for (int i = 0; i < m_iNumSpheres; i++) {
-			int x = floor((m_particlePos[i].x + 0.5f) * hinfCell);
-			x = max(0, min(x, hashCellX - 1));
+			int x = floor((m_particlePos[i].x + m_baseOff) * hinfCell);
+			x = max(1, min(x, hashCellX - 2));
 			int x0 = max(x - 1, 1);
 			int x1 = min(x + 1, hashCellX - 2);
-			int y = floor((m_particlePos[i].y + 0.5f) * hinfCell);
-			x = max(0, min(x, hashCellX - 1));
+			int y = floor((m_particlePos[i].y + m_baseOff) * hinfCell);
+			y = max(1, min(y, hashCellY - 2));
 			int y0 = max(y - 1, 1);
 			int y1 = min(y + 1, hashCellY - 2);
-			int z = floor((m_particlePos[i].z + 0.5f) * hinfCell);
-			x = max(0, min(x, hashCellX - 1));
-			int z0 = max(z - 1, 0);
-			int z1 = min(z + 0, hashCellZ - 1);
+			int z = floor((m_particlePos[i].z + m_baseOff) * hinfCell);
+			z = max(1, min(z, hashCellZ - 2));
+			int z0 = max(z - 1, 1);
+			int z1 = min(z + 1, hashCellZ - 2);
 
 			for (int xi = x0; xi <= x1; xi++) {
 				for (int yi = y0; yi <= y1; yi++) {
@@ -126,11 +138,14 @@ void FlipSimulator::pushParticlesApart(int numIters) {
 							Vec3 vd = m_particlePos[i] - m_particlePos[j];
 							float distance = norm(vd);
 							if (distance >= minDistance || distance == 0.0f) continue;
-
 							Vec3 dpos = 0.5f * (minDistance - distance) * vd / distance;
+
 							m_particlePos[i] += dpos;
 							m_particlePos[j] -= dpos;
 
+							Vec3 color = (m_particleColor[i] + m_particleColor[j]) * 0.5f;
+							m_particleColor[i] += 0.001f * (color - m_particleColor[i]);
+							m_particleColor[j] += 0.001f * (color - m_particleColor[j]);
 						}
 					}
 				}
@@ -149,28 +164,28 @@ void FlipSimulator::handleParticleCollisions(Vec3 obstaclePos, float obstacleRad
 		{
 			noCollision = true;
 			cnt++;
-			if (m_particlePos[i].x < -0.5f + m_h + m_particleRadius) {
-				m_particlePos[i].x = -0.5f + m_h + m_particleRadius;
+			if (m_particlePos[i].x < -0.5f + m_half + m_particleRadius) {
+				m_particlePos[i].x = -0.5f + m_half + m_particleRadius;
 				m_particleVel[i].x = 0;
 			}
-			else if (m_particlePos[i].x > 0.5f - m_particleRadius) {
-				m_particlePos[i].x = 0.5f -m_particleRadius;
+			else if (m_particlePos[i].x > 0.5f - m_half - m_particleRadius) {
+				m_particlePos[i].x = 0.5f - m_half - m_particleRadius;
 				m_particleVel[i].x = 0;
 			}
-			if (m_particlePos[i].z < -0.5f + m_h + m_particleRadius) {
-				m_particlePos[i].z = -0.5f + m_h + m_particleRadius;
+			if (m_particlePos[i].z < -0.5f + m_half + m_particleRadius) {
+				m_particlePos[i].z = -0.5f + m_half + m_particleRadius;
 				m_particleVel[i].z = 0;
 			}
-			else if (m_particlePos[i].z > 0.5f - m_particleRadius) {
-				m_particlePos[i].z = 0.5f - m_particleRadius;
+			else if (m_particlePos[i].z > 0.5f - m_half - m_particleRadius) {
+				m_particlePos[i].z = 0.5f - m_half - m_particleRadius;
 				m_particleVel[i].z = 0;
 			}
-			if (m_particlePos[i].y < -0.5f + m_h + m_particleRadius) {
-				m_particlePos[i].y = -0.5f + m_h + m_particleRadius;
+			if (m_particlePos[i].y < -0.5f + m_half + m_particleRadius) {
+				m_particlePos[i].y = -0.5f + m_half + m_particleRadius;
 				m_particleVel[i].y = 0;
 			}
-			else if (m_particlePos[i].y > 0.5f - m_particleRadius) {
-				m_particlePos[i].y = 0.5f - m_particleRadius;
+			else if (m_particlePos[i].y > 0.5f - m_half - m_particleRadius) {
+				m_particlePos[i].y = 0.5f - m_half - m_particleRadius;
 				m_particleVel[i].y = 0;
 			}
 			/*
@@ -187,18 +202,18 @@ void FlipSimulator::handleParticleCollisions(Vec3 obstaclePos, float obstacleRad
 
 void FlipSimulator::updateParticleDensity() {
 	m_particleDensity.clear(); m_particleDensity.resize(m_iNumCells, 0.0f);
-	int offset = 0.5f * m_h;
+	int offset = m_half;
 
 	for (int i = 0; i < m_iNumSpheres; i++) {
-		float x = max((float)m_particlePos[i].x + 0.5f, m_h + m_particleRadius);
+		float x = max((float)m_particlePos[i].x + m_baseOff, m_h + m_particleRadius);
 		int x0 = floor((x - offset) * m_fInvSpacing);
 		float dx = (x - offset - x0 * m_h) * m_fInvSpacing;
 		int x1 = min(x0 + 1, m_iCellX - 1);
-		float y = max((float)m_particlePos[i].y + 0.5f, m_h + m_particleRadius);
+		float y = max((float)m_particlePos[i].y + m_baseOff, m_h + m_particleRadius);
 		int y0 = floor((y - offset) * m_fInvSpacing);
 		float dy = (y - offset - y0 * m_h) * m_fInvSpacing;
 		int y1 = min(y0 + 1, m_iCellY - 1);
-		float z = max((float)m_particlePos[i].z + 0.5f, m_h + m_particleRadius);
+		float z = max((float)m_particlePos[i].z + m_baseOff, m_h + m_particleRadius);
 		int z0 = floor((z - offset) * m_fInvSpacing);
 		float dz = (z - offset - z0 * m_h) * m_fInvSpacing;
 		int z1 = min(z0 + 1, m_iCellZ - 1);
@@ -228,9 +243,9 @@ void FlipSimulator::updateParticleDensity() {
 }
 
 void FlipSimulator::transferVelocities(bool toGrid, float flipRatio) {
-	const float off_x[3] = { 0.0f, 0.5f * m_h, 0.5f * m_h };
-	const float off_y[3] = { 0.5f * m_h, 0.0f, 0.5f * m_h };
-	const float off_z[3] = { 0.5f * m_h, 0.5f * m_h, 0.0f };
+	const float off_x[3] = { 0.0f, m_half, m_half };
+	const float off_y[3] = { m_half, 0.0f, m_half };
+	const float off_z[3] = { m_half, m_half, 0.0f };
 	std::vector<float> w; 
 	if (toGrid) {
 		m_pre_vel.assign(m_vel.begin(), m_vel.end());
@@ -238,9 +253,9 @@ void FlipSimulator::transferVelocities(bool toGrid, float flipRatio) {
 		for (int i = 0; i < m_iNumCells; i++)
 			m_type[i] = (m_s[i] == 0) ? SOLID_CELL : EMPTY_CELL;
 		for (int i = 0; i < m_iNumSpheres; i++) {
-			int x = floor((m_particlePos[i].x + 0.5f) * m_fInvSpacing);
-			int y = floor((m_particlePos[i].y + 0.5f) * m_fInvSpacing);
-			int z = floor((m_particlePos[i].z + 0.5f) * m_fInvSpacing);
+			int x = floor((m_particlePos[i].x + m_baseOff) * m_fInvSpacing);
+			int y = floor((m_particlePos[i].y + m_baseOff) * m_fInvSpacing);
+			int z = floor((m_particlePos[i].z + m_baseOff) * m_fInvSpacing);
 			int index = calcIndex(x, y, z);
 			if (m_type[index] == EMPTY_CELL)
 				m_type[index] = FLUID_CELL;
@@ -249,14 +264,17 @@ void FlipSimulator::transferVelocities(bool toGrid, float flipRatio) {
 			w.clear();
 			w.resize(m_iNumCells, 0.0f);
 			for (int i = 0; i < m_iNumSpheres; i++) {
-				int x0 = floor((m_particlePos[i].x + 0.5f - off_x[dimension]) * m_fInvSpacing);
-				float dx = (m_particlePos[i].x + 0.5f -off_x[dimension] - x0 * m_h) * m_fInvSpacing;
+				float x = (float)m_particlePos[i].x + m_baseOff;
+				int x0 = min((int)floor((x - off_x[dimension]) * m_fInvSpacing), m_iCellX - 2);
+				float dx = (x - off_x[dimension] - x0 * m_h) * m_fInvSpacing;
 				int x1 = min(x0 + 1, m_iCellX - 1);
-				int y0 = floor((m_particlePos[i].y + 0.5f - off_y[dimension]) * m_fInvSpacing);
-				float dy = (m_particlePos[i].y + 0.5f - off_y[dimension] - y0 * m_h) * m_fInvSpacing;
+				float y = (float)m_particlePos[i].y + m_baseOff;
+				int y0 = min((int)floor((y - off_y[dimension]) * m_fInvSpacing), m_iCellY - 2);
+				float dy = (y - off_y[dimension] - y0 * m_h) * m_fInvSpacing;
 				int y1 = min(y0 + 1, m_iCellY - 1);
-				int z0 = floor((m_particlePos[i].z + 0.5f - off_z[dimension]) * m_fInvSpacing);
-				float dz = (m_particlePos[i].z + 0.5f - off_z[dimension] - z0 * m_h) * m_fInvSpacing;
+				float z = (float)m_particlePos[i].z + m_baseOff;
+				int z0 = min((int)floor((z - off_z[dimension]) * m_fInvSpacing), m_iCellZ - 2);
+				float dz = (z - off_z[dimension] - z0 * m_h) * m_fInvSpacing;
 				int z1 = min(z0 + 1, m_iCellZ - 1);
 
 				float tmpV = m_particleVel[i][dimension];
@@ -287,27 +305,27 @@ void FlipSimulator::transferVelocities(bool toGrid, float flipRatio) {
 	else {
 		for (int dimension = 0; dimension < 3; dimension++) {
 			for (int i = 0; i < m_iNumSpheres; i++) {
-				int x0 = floor((m_particlePos[i].x + 0.5f - off_x[dimension]) * m_fInvSpacing);
-				//x0 = max(1, x0);
-				float dx = (m_particlePos[i].x + 0.5f - off_x[dimension] - x0 * m_h) * m_fInvSpacing;
+				float x = (float)m_particlePos[i].x + m_baseOff;
+				int x0 = min((int)floor((x - off_x[dimension]) * m_fInvSpacing), m_iCellX - 2);
+				float dx = (x - off_x[dimension] - x0 * m_h) * m_fInvSpacing;
 				int x1 = min(x0 + 1, m_iCellX - 1);
-				int y0 = floor((m_particlePos[i].y + 0.5f - off_y[dimension]) * m_fInvSpacing);
-				//y0 = max(1, y0);
-				float dy = (m_particlePos[i].y + 0.5f - off_y[dimension] - y0 * m_h) * m_fInvSpacing;
+				float y = (float)m_particlePos[i].y + m_baseOff;
+				int y0 = min((int)floor((y - off_y[dimension]) * m_fInvSpacing), m_iCellY - 2);
+				float dy = (y - off_y[dimension] - y0 * m_h) * m_fInvSpacing;
 				int y1 = min(y0 + 1, m_iCellY - 1);
-				int z0 = floor((m_particlePos[i].z + 0.5f - off_z[dimension]) * m_fInvSpacing);
-				//z0 = max(1, z0);
-				float dz = (m_particlePos[i].z + 0.5f - off_z[dimension] - z0 * m_h) * m_fInvSpacing;
+				float z = (float)m_particlePos[i].z + m_baseOff;
+				int z0 = min((int)floor((z - off_z[dimension]) * m_fInvSpacing), m_iCellZ - 2);
+				float dz = (z - off_z[dimension] - z0 * m_h) * m_fInvSpacing;
 				int z1 = min(z0 + 1, m_iCellZ - 1);
 
 				float oldV = m_particleVel[i][dimension];
 				float d = 0.0f;
 				float picV = 0.0f; float dV = 0.0f;
 				int tmp = 0;
-				int offset = (dimension == 0) ? m_iCellY * m_iCellZ : ((dimension == 1) ? m_iCellZ : 1);
+				int offset = (dimension == 0) ? (m_iCellY * m_iCellZ) : ((dimension == 1) ? m_iCellZ : 1);
 
 				tmp = calcIndex(x0, y0, z0);
-				if (m_type[tmp] != EMPTY_CELL || m_type[tmp - offset] != EMPTY_CELL) {
+				if ((m_type[tmp] != EMPTY_CELL || m_type[tmp - offset] != EMPTY_CELL)) {
 					picV += m_vel[tmp][dimension] * (1 - dx) * (1 - dy) * (1 - dz);
 					dV += (m_vel[tmp][dimension] - m_pre_vel[tmp][dimension]) * (1 - dx) * (1 - dy) * (1 - dz);
 					d += (1 - dx) * (1 - dy) * (1 - dz);
@@ -364,6 +382,7 @@ void FlipSimulator::transferVelocities(bool toGrid, float flipRatio) {
 }
 
 void FlipSimulator::solveIncompressibility(int numIters, float dt, float overRelaxation, bool compensateDrift) {
+	m_pre_vel.clear();
 	m_pre_vel.assign(m_vel.begin(), m_vel.end());
 	for (int iter = 0; iter < numIters; iter++) {
 
@@ -382,14 +401,15 @@ void FlipSimulator::solveIncompressibility(int numIters, float dt, float overRel
 					int s = m_s[left] + m_s[right] + m_s[top] + m_s[bottom] + m_s[front] + m_s[back];
 					if (s == 0) continue;
 
-					float d = m_vel[right].x - m_vel[center].x + m_vel[top].y - m_vel[center].y + m_vel[front].z - m_vel[center].z;
+					float d = m_vel[right].x - m_vel[center].x + m_vel[top].y - m_vel[center].y + m_vel[front].z - m_vel[center].z; 
+					d *= overRelaxation;
 					if (m_particleRestDensity > 0.0f && compensateDrift) {
 						float compression = m_particleDensity[center] - m_particleRestDensity;
 						if (compression > 0.0f)
 							d -= 1.0f * compression;
 					}
 
-					float p = -(d / (float)s) * overRelaxation;
+					float p = -(d / (float)s);
 
 					m_vel[center].x -= m_s[left] * p;
 					m_vel[right].x += m_s[right] * p;
@@ -404,21 +424,23 @@ void FlipSimulator::solveIncompressibility(int numIters, float dt, float overRel
 }
 
 void FlipSimulator::updateParticleColors() {
-	/*for (int i = 0; i < m_iNumSpheres; i++) {
-		m_particleColor[i] = Vec3(0.5f);
+	for (int i = 0; i < m_iNumSpheres; i++) {
+		m_particleColor[i].x = min(max(0.0f, (float)m_particleColor[i].x - 0.03f), 1.0f);
+		m_particleColor[i].y = min(max(0.0f, (float)m_particleColor[i].y - 0.03f), 1.0f);
+		m_particleColor[i].z = min(max(0.0f, (float)m_particleColor[i].z + 0.03f), 1.0f);
 
-		int x = floor((m_particlePos[i].x + 0.5f) * m_fInvSpacing);
-		x = max(1, min(x, m_iCellX - 1));
-		int y = floor((m_particlePos[i].y + 0.5f) * m_fInvSpacing);
-		y = max(1, min(y, m_iCellY - 1));
-		int z = floor((m_particlePos[i].z + 0.5f) * m_fInvSpacing);
-		z = max(1, min(z, m_iCellZ - 1));
+		int x = floor((m_particlePos[i].x + m_baseOff) * m_fInvSpacing);
+		x = max(0, min(x, m_iCellX - 1));
+		int y = floor((m_particlePos[i].y + m_baseOff) * m_fInvSpacing);
+		y = max(0, min(y, m_iCellY - 1));
+		int z = floor((m_particlePos[i].z + m_baseOff) * m_fInvSpacing);
+		z = max(0, min(z, m_iCellZ - 1));
 
 		if (m_particleRestDensity > 0.0f) {
 			float relDentisy = m_particleDensity[calcIndex(x, y, z)] / m_particleRestDensity;
-			if (relDentisy > 0.7) {
-				m_particleColor[i] = Vec3(0.2f, 0.2f, 1.0f);
+			if (relDentisy < 0.5f) {
+				m_particleColor[i] = Vec3(0.8f, 0.8f, 1.0f);
 			}
 		}
-	}*/
+	}
 }

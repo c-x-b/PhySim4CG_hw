@@ -13,6 +13,7 @@ public:
 
 	// UI Attributes
 	Vec3 m_externalForce;
+	Vec3 m_gravity;
 	Point2D m_mouse;
 	Point2D m_trackmouse;
 	Point2D m_oldtrackmouse;
@@ -28,6 +29,8 @@ public:
 	int m_iCellY;
 	int m_iCellZ;
 	float m_h; 			 // grid spacing, m_h = 1.0 / (m_iCellX-1)
+	float m_half;		 // half of h
+	float m_baseOff;	 // offset from origin
 	float m_fInvSpacing; // grid inverse spacing, m_fInvSpacing = 1.0/m_h
 	int m_iNumCells;	 // m_iCellX * m_iCellY * m_iCellZ
 
@@ -130,13 +133,15 @@ public:
 		m_iCellY = res + 1;
 		m_iCellZ = res + 1;
 		m_h = 1.0 / float(res);
+		m_half = m_h * 0.5f;
+		m_baseOff = 0.5f + m_half;
 		m_fInvSpacing = float(res);
 		m_iNumCells = m_iCellX * m_iCellY * m_iCellZ;		
 		m_particleRadius = 0.3 * point_r;
 
 		// update particle array
 		m_particlePos.clear(); m_particlePos.resize(m_iNumSpheres, Vec3(0.0f));
-		m_particleColor.clear(); m_particleColor.resize(m_iNumSpheres, Vec3(0.5f));
+		m_particleColor.clear(); m_particleColor.resize(m_iNumSpheres, Vec3(0.8f,0.8f,1.0f));
 		m_particleVel.clear(); m_particleVel.resize(m_iNumSpheres, Vec3(0.0f));
 
 		// update grid array
